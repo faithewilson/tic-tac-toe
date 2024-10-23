@@ -1,4 +1,4 @@
-//Alexa Hoover Computer Networks 10/23/24
+// Alexa Hoover C version, Computer Networking 10/23/24
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +23,7 @@ int main() {
 
     // Create client socket
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Socket creation error");
+        printf("\n Socket creation error \n");
         return -1;
     }
 
@@ -31,18 +31,20 @@ int main() {
     serv_addr.sin_port = htons(8080);
 
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
-        perror("Invalid address/Address not supported");
+        printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
 
+    // Connect to server
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Connection Failed");
+        printf("\nConnection Failed \n");
         return -1;
     }
 
     while (replay) {
         // Game loop
         while (1) {
+           
             printf("Enter your move (row col): ");
             scanf("%d %d", &row, &col);
 
@@ -52,26 +54,29 @@ int main() {
             send(sock, move, strlen(move), 0);
             logMessage(move);
 
+            // Receive message from the server
             memset(buffer, 0, sizeof(buffer));
-            read(sock, buffer, 1024);
+            int bytes_read = read(sock, buffer, sizeof(buffer));
+            if (bytes_read <= 0) {
+                printf("Server disconnected.\n");
+                close(sock);
+                return 0;
+            }
+
             printf("Server response:\n%s\n", buffer);
             logMessage(buffer);
 
-            if (strcmp(buffer, "WIN") == 0) {
-                printf("You win!\n");
-                logMessage("WIN");
+            if (strstr(buffer, "WIN") != NULL) {
+                printf("Player %c wins!\n", buffer[4]); // buffer[4] will be the winner ('X' or 'O')
                 break;
-            } else if (strcmp(buffer, "TIE") == 0) {
+            } else if (strstr(buffer, "TIE") != NULL) {
                 printf("It's a tie!\n");
-                logMessage("TIE");
                 break;
-            } else if (strcmp(buffer, "INVALID") == 0) {
+            } else if (strstr(buffer, "INVALID") != NULL) {
                 printf("Invalid move! Try again.\n");
-                logMessage("INVALID");
             }
         }
 
-        // Ask if the player wants to replay
         printf("Replay? (yes/no): ");
         scanf("%s", replay_choice);
 
@@ -86,7 +91,8 @@ int main() {
         }
     }
 
-    printf("\nGame Over. Message Log:\n%s\n", messageLog);
+    // Message log (DONES'T WORK)
+    printf("\nMessage Log:\n%s\n", messageLog);
 
     close(sock);
     return 0;

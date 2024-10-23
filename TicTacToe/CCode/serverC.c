@@ -1,4 +1,4 @@
-// Alexa Hoover, Computer Networks 10/23/24
+// Alexa Hoover C version, Computer Networking 10/23/24
 
 #include <stdio.h>
 #include <string.h>
@@ -15,8 +15,9 @@ int isValidMove(char board[BOARD_SIZE][BOARD_SIZE], int row, int col);
 void makeMove(char board[BOARD_SIZE][BOARD_SIZE], int row, int col, char player);
 int checkWin(char board[BOARD_SIZE][BOARD_SIZE], char player);
 int isBoardFull(char board[BOARD_SIZE][BOARD_SIZE]);
+void logMove(char player, int row, int col, struct sockaddr_in *client_addr, struct sockaddr_in *server_addr);
 
-// Log to store the messages
+// Log to store the messages (DOESN'T WORK(?))
 char messageLog[1024 * 10] = "";
 
 void logMessage(const char *message) {
@@ -44,7 +45,7 @@ void printBoard(char board[BOARD_SIZE][BOARD_SIZE]) {
     }
 }
 
-// Function to check if a move is valid (i.e., the spot is empty)
+// Function to check if a move is valid
 int isValidMove(char board[BOARD_SIZE][BOARD_SIZE], int row, int col) {
     return (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE && board[row][col] == ' ');
 }
@@ -83,10 +84,18 @@ int isBoardFull(char board[BOARD_SIZE][BOARD_SIZE]) {
     return 1;
 }
 
+// Function to log moves
+void logMove(char player, int row, int col, struct sockaddr_in *client_addr, struct sockaddr_in *server_addr) {
+    char logEntry[256];
+    snprintf(logEntry, sizeof(logEntry), "Player %c move: %d %d | IP From: %s | IP To: %s", 
+             player, row, col, inet_ntoa(client_addr->sin_addr), inet_ntoa(server_addr->sin_addr));
+    logMessage(logEntry);
+}
+
 int main() {
     int server_fd, new_socket;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
+    struct sockaddr_in address, client_addr;
+    int addrlen = sizeof(address), client_addrlen = sizeof(client_addr);
     char buffer[1024] = {0};
     char board[BOARD_SIZE][BOARD_SIZE];
     int row, col;
@@ -120,7 +129,7 @@ int main() {
     printf("Waiting for connections...\n");
 
     // Accept a connection
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+    if ((new_socket = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t*)&client_addrlen)) < 0) {
         perror("Accept failed");
         exit(EXIT_FAILURE);
     }
@@ -143,27 +152,31 @@ int main() {
 
             if (isValidMove(board, row, col)) {
                 makeMove(board, row, col, currentPlayer);
-
-                // Send updated board
+                logMove(currentPlayer, row, col, &client_addr, &address);
                 char boardStr[1024];
                 snprintf(boardStr, sizeof(boardStr),
                          "-------\n|%c|%c|%c|\n-------\n|%c|%c|%c|\n-------\n|%c|%c|%c|\n-------\n",
                          board[0][0], board[0][1], board[0][2],
                          board[1][0], board[1][1], board[1][2],
                          board[2][0], board[2][1], board[2][2]);
-                send(new_socket, boardStr, strlen(boardStr), 0);
-                logMessage(boardStr);
 
-                // Check for win or tie
+                char statusStr[50];
                 if (checkWin(board, currentPlayer)) {
-                    printf("Player %c wins!\n", currentPlayer);
-                    send(new_socket, "WIN", strlen("WIN"), 0);
-                    logMessage("WIN");
-                    break;
+                    snprintf(statusStr, sizeof(statusStr), "WIN %c", currentPlayer);
                 } else if (isBoardFull(board)) {
-                    printf("The game is a tie!\n");
-                    send(new_socket, "TIE", strlen("TIE"), 0);
-                    logMessage("TIE");
+                    strcpy(statusStr, "TIE");
+                } else {
+                    strcpy(statusStr, "CONTINUE");
+                }
+
+                char fullMessage[1024];
+                snprintf(fullMessage, sizeof(fullMessage), "%s\n%s", boardStr, statusStr);
+
+                // Send the message
+                send(new_socket, fullMessage, strlen(fullMessage), 0);
+                logMessage(fullMessage);
+
+                if (strcmp(statusStr, "WIN") == 0 || strcmp(statusStr, "TIE") == 0) {
                     break;
                 }
 
@@ -190,8 +203,6 @@ int main() {
             break;
         }
     }
-
-    // After game ends, print message log
     printf("\nGame Over. Message Log:\n%s\n", messageLog);
 
     // Close the socket
